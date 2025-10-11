@@ -12,14 +12,25 @@ DB_FILE = "password_manager.db"
 db = SQLite3::Database.new(DB_FILE)
 db.results_as_hash = true
 
-# Create / migrate tables
+# Create / migrate tables (add columns used by recovery & encrypted data-key)
 db.execute <<-SQL
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
     email TEXT UNIQUE,
     password_hash TEXT,
     enc_salt TEXT,
-    created_at TEXT
+    created_at TEXT,
+    failed_attempts INTEGER DEFAULT 0,
+    locked_until TEXT DEFAULT NULL,
+    -- encrypted data-key (master)
+    edk_master TEXT,
+    edk_master_iv TEXT,
+    edk_master_tag TEXT,
+    -- recovery: salt and encrypted data-key for recovery token
+    recovery_salt TEXT,
+    edk_recovery TEXT,
+    edk_recovery_iv TEXT,
+    edk_recovery_tag TEXT
   );
 SQL
 
@@ -55,22 +66,24 @@ def unb64(x)
   Base64.strict_decode64(x)
 end
 
-def derive_key(master_password, salt, iterations = ITERATIONS, key_len = KEY_LEN)
-  OpenSSL::PKCS5.pbkdf2_hmac(master_password, salt, iterations, key_len, 'sha256')
+# PBKDF2 to derive a key from a password/token + salt
+def derive_key(password, salt, iterations = ITERATIONS, key_len = KEY_LEN)
+  OpenSSL::PKCS5.pbkdf2_hmac(password, salt, iterations, key_len, 'sha256')
 end
 
-def encrypt_aes_gcm(plain_text, key)
+# AES-256-GCM encrypt/decrypt helpers (works on binary plaintext)
+def encrypt_aes_gcm_binary(plain_bytes, key)
   cipher = OpenSSL::Cipher.new('aes-256-gcm')
   cipher.encrypt
   cipher.key = key
   iv = cipher.random_iv
   cipher.auth_data = ''
-  encrypted = cipher.update(plain_text) + cipher.final
+  encrypted = cipher.update(plain_bytes) + cipher.final
   tag = cipher.auth_tag
   [b64(encrypted), b64(iv), b64(tag)]
 end
 
-def decrypt_aes_gcm(encrypted_b64, iv_b64, tag_b64, key)
+def decrypt_aes_gcm_binary(encrypted_b64, iv_b64, tag_b64, key)
   return nil if encrypted_b64.nil? || iv_b64.nil? || tag_b64.nil?
   encrypted = unb64(encrypted_b64)
   iv = unb64(iv_b64)
@@ -82,9 +95,21 @@ def decrypt_aes_gcm(encrypted_b64, iv_b64, tag_b64, key)
   cipher.auth_tag = tag
   cipher.auth_data = ''
   plain = cipher.update(encrypted) + cipher.final
-  plain.force_encoding('utf-8')
+  plain # binary bytes
 rescue OpenSSL::Cipher::CipherError
   nil
+end
+
+# wrappers for credentials encryption (credentials are text/utf-8)
+def encrypt_aes_gcm_text(plain_text, key)
+  e, iv, tag = encrypt_aes_gcm_binary(plain_text.encode('utf-8'), key)
+  [e, iv, tag]
+end
+
+def decrypt_aes_gcm_text(encrypted_b64, iv_b64, tag_b64, key)
+  bin = decrypt_aes_gcm_binary(encrypted_b64, iv_b64, tag_b64, key)
+  return nil if bin.nil?
+  bin.force_encoding('utf-8')
 end
 
 # --- DB helpers ---
@@ -92,20 +117,59 @@ def find_user(db, email)
   db.get_first_row("SELECT * FROM users WHERE email = ?", [email])
 end
 
+# create user: returns user row
+# * generates per-user enc_salt
+# * generates a random data_key used to encrypt credentials
+# * encrypts data_key with master-key (derived from password) and with recovery-key (derived from recovery token)
 def create_user(db, email, password)
   password_hash = BCrypt::Password.create(password)
-  salt = generate_salt
-  db.execute("INSERT INTO users (email, password_hash, enc_salt, created_at) VALUES (?, ?, ?, ?)",
-             [email, password_hash, b64(salt), DateTime.now.to_s])
-  find_user(db, email)
+  enc_salt = generate_salt
+  data_key = SecureRandom.random_bytes(KEY_LEN) # 32 bytes data key
+
+  master_key = derive_key(password, enc_salt)
+  edk_master_ct, edk_master_iv, edk_master_tag = encrypt_aes_gcm_binary(data_key, master_key)
+
+  # generate recovery token (show to user), and encrypt data_key with key derived from token
+  recovery_token = SecureRandom.urlsafe_base64(24) # shown once to user
+  recovery_salt = generate_salt
+  recovery_key = derive_key(recovery_token, recovery_salt)
+  edk_recovery_ct, edk_recovery_iv, edk_recovery_tag = encrypt_aes_gcm_binary(data_key, recovery_key)
+
+  db.execute("INSERT INTO users (email, password_hash, enc_salt, created_at, edk_master, edk_master_iv, edk_master_tag, recovery_salt, edk_recovery, edk_recovery_iv, edk_recovery_tag)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+             [email, password_hash, b64(enc_salt), DateTime.now.to_s, edk_master_ct, edk_master_iv, edk_master_tag, b64(recovery_salt), edk_recovery_ct, edk_recovery_iv, edk_recovery_tag])
+
+  user = find_user(db, email)
+  # return both user row and plain-text recovery_token (caller must display & store it)
+  [user, recovery_token]
 end
 
 def verify_password(stored_hash, password)
   BCrypt::Password.new(stored_hash) == password
 end
 
-# --- Credential CRUD ---
-def add_credential(db, user_id, key)
+# re-encrypt data_key for master-key (used when changing master password)
+def reencrypt_edk_master(db, user_id, data_key, new_password)
+  new_salt = generate_salt
+  new_master_key = derive_key(new_password, new_salt)
+  edk_ct, edk_iv, edk_tag = encrypt_aes_gcm_binary(data_key, new_master_key)
+  db.execute("UPDATE users SET enc_salt = ?, edk_master = ?, edk_master_iv = ?, edk_master_tag = ? WHERE id = ?",
+             [b64(new_salt), edk_ct, edk_iv, edk_tag, user_id])
+end
+
+# regenerate recovery token (called when logged in and user requests new token)
+def regenerate_recovery_token(db, user_id, data_key)
+  new_token = SecureRandom.urlsafe_base64(24)
+  new_recovery_salt = generate_salt
+  recovery_key = derive_key(new_token, new_recovery_salt)
+  edk_recovery_ct, edk_recovery_iv, edk_recovery_tag = encrypt_aes_gcm_binary(data_key, recovery_key)
+  db.execute("UPDATE users SET recovery_salt = ?, edk_recovery = ?, edk_recovery_iv = ?, edk_recovery_tag = ? WHERE id = ?",
+             [b64(new_recovery_salt), edk_recovery_ct, edk_recovery_iv, edk_recovery_tag, user_id])
+  new_token
+end
+
+# --- Credential CRUD (same as before, but uses data_key for encrypt/decrypt) ---
+def add_credential(db, user_id, data_key)
   # Fetch existing categories for this user
   rows = db.execute("SELECT DISTINCT category FROM credentials WHERE user_id = ?", [user_id])
   categories = rows.map { |r| r['category'] }.compact.map(&:strip).reject(&:empty?).uniq.sort
@@ -167,27 +231,22 @@ def add_credential(db, user_id, key)
     puts "Password cannot be blank. Please enter the password to store."
   end
 
-  encrypted, iv, tag = encrypt_aes_gcm(pw, key)
+  encrypted, iv, tag = encrypt_aes_gcm_text(pw, data_key)
   db.execute("INSERT INTO credentials (user_id, category, site_name, username, encrypted_password, iv, tag, created_at)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
              [user_id, chosen_category, site, uname, encrypted, iv, tag, DateTime.now.to_s])
   puts "Credential saved."
 end
 
-# New: show category list and let user pick by number, then list decrypted creds
-def list_credentials_by_category(db, user_id, key)
-  # fetch distinct categories for this user
+# list credentials (category selection) using data_key for decryption
+def list_credentials_by_category(db, user_id, data_key)
   rows = db.execute("SELECT DISTINCT category FROM credentials WHERE user_id = ?", [user_id])
   categories = rows.map { |r| r['category'] } # may include nil or empty string
-  # normalize display names and build menu
   display_cats = []
-  # 'All' option
   display_cats << { key: :all, label: "All categories" }
-  # 'Uncategorized' if present
   if categories.any? { |c| c.nil? || c.strip.empty? }
     display_cats << { key: :uncat, label: "(Uncategorized)" }
   end
-  # add distinct non-empty categories sorted
   distinct_named = categories.compact.map(&:strip).reject(&:empty?).uniq.sort
   distinct_named.each { |c| display_cats << { key: c, label: c } }
 
@@ -208,7 +267,6 @@ def list_credentials_by_category(db, user_id, key)
   end
   chosen = display_cats[sel - 1][:key]
 
-  # Build query based on selection
   if chosen == :all
     creds = db.execute("SELECT * FROM credentials WHERE user_id = ? ORDER BY created_at DESC", [user_id])
   elsif chosen == :uncat
@@ -226,7 +284,7 @@ def list_credentials_by_category(db, user_id, key)
   puts sprintf("%-3s| %-28s| %-26s| %-16s| %-20s| %s", "ID", "Site", "Username", "Category", "Created", "Password (decrypted)")
   puts "-" * 120
   creds.each do |r|
-    plain = decrypt_aes_gcm(r['encrypted_password'], r['iv'], r['tag'], key)
+    plain = decrypt_aes_gcm_text(r['encrypted_password'], r['iv'], r['tag'], data_key)
     display_pw = plain.nil? ? "[unable to decrypt]" : plain
     category_display = (r['category'] && !r['category'].strip.empty?) ? r['category'] : "(Uncategorized)"
     puts sprintf("%-3s| %-28s| %-26s| %-16s| %-20s| %s",
@@ -258,25 +316,12 @@ def delete_credential(db, user_id)
   end
 end
 
-# --- Login / Signup flow (with email validation + rate-limiting/lockout) ---
-# Ensure the users table has columns for failed_attempts and locked_until (backwards-compatible)
-begin
-  db.execute("ALTER TABLE users ADD COLUMN failed_attempts INTEGER DEFAULT 0")
-rescue SQLite3::SQLException
-  # column probably already exists; ignore
-end
-
-begin
-  db.execute("ALTER TABLE users ADD COLUMN locked_until TEXT DEFAULT NULL")
-rescue SQLite3::SQLException
-  # column probably already exists; ignore
-end
+# --- Login / Signup flow (with recovery token support) ---
+EMAIL_REGEX = /\A[^@\s]+@[^@\s]+\.[^@\s]+\z/
+MAX_ATTEMPTS = 5
+LOCKOUT_MINUTES = 15
 
 puts "=== Welcome to Password Manager ==="
-
-EMAIL_REGEX = /\A[^@\s]+@[^@\s]+\.[^@\s]+\z/
-MAX_ATTEMPTS = 5         # number of allowed failed attempts before lockout
-LOCKOUT_MINUTES = 15     # minutes to lock account after too many failures
 
 email = ''
 user = nil
@@ -316,37 +361,89 @@ loop do
         else
           # lock expired -> reset failed_attempts and locked_until
           db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", [user['id']])
-          user = find_user(db, email) # refresh
+          user = find_user(db, email)
         end
       rescue ArgumentError
-        # If parsing fails, clear the locked_until to be safe
         db.execute("UPDATE users SET locked_until = NULL WHERE id = ?", [user['id']])
         user = find_user(db, email)
       end
     end
 
-    # Email exists — ask if they want to log in or use a different email
     puts "An account with that email exists."
-    print "Do you want to log in with this email? (y/N): "
-    answer = gets.chomp.strip.downcase
-    if answer == 'y' || answer == 'yes'
+    puts "Options: [1] Log in  [2] Forgot master password (use recovery token)  [3] Change email"
+    print "Choose 1/2/3: "
+    opt = gets.chomp.strip
+    if opt == '1'
       break
+    elsif opt == '2'
+      # Forgot flow: ask for recovery token, attempt to decrypt edk_recovery to obtain data_key
+      print "Enter your recovery token: "
+      token = gets.chomp.strip
+      if token.empty?
+        puts "No token entered. Returning to email prompt."
+        next
+      end
+      # ensure recovery fields exist
+      if user['recovery_salt'].nil? || user['edk_recovery'].nil?
+        puts "No recovery setup for this account. Cannot recover."
+        next
+      end
+      recovery_salt = unb64(user['recovery_salt'])
+      recovery_key = derive_key(token, recovery_salt)
+      data_key = decrypt_aes_gcm_binary(user['edk_recovery'], user['edk_recovery_iv'], user['edk_recovery_tag'], recovery_key)
+      if data_key.nil?
+        puts "Recovery token incorrect or corrupted. Returning to email prompt."
+        next
+      end
+
+      # Got data_key — allow user to set a new master password and re-encrypt edk_master
+      puts "Recovery token accepted. You may now set a new master password."
+      new_password = ''
+      loop do
+        print "Enter new master password (required): "
+        new_password = gets.chomp
+        if new_password.strip.empty?
+          puts "Password cannot be blank."
+          next
+        end
+        print "Confirm new master password: "
+        pc = gets.chomp
+        if new_password != pc
+          puts "Passwords do not match. Try again."
+          next
+        end
+        break
+      end
+
+      # update password_hash and re-encrypt data_key with new master password (new salt)
+      new_password_hash = BCrypt::Password.create(new_password)
+      # re-encrypt edk_master with new salt & update password hash
+      reencrypt_edk_master(db, user['id'], data_key, new_password)
+      db.execute("UPDATE users SET password_hash = ?, failed_attempts = 0, locked_until = NULL WHERE id = ?", [new_password_hash, user['id']])
+      user = find_user(db, email) # refresh
+      puts "Master password reset successful. You are now logged in."
+      password = new_password
+      # set local variables for session below
+      break
+    elsif opt == '3'
+      # let them re-enter email
+      next
     else
-      # let them enter a different email
+      puts "Invalid option."
       next
     end
   else
-    # Email does not exist — proceed to create account
     break
   end
 end
 
+# At this point: `email` is set and `user` is either a DB row (existing) or nil (new user)
 password = ''
 
 if user.nil?
-  # Create new account flow (enforce non-empty password + confirmation)
+  # Create new account: enforce non-empty password + confirmation
   puts "No account found. Let's create one!"
-
+  created = nil
   loop do
     print "Enter master password (required): "
     password = gets.chomp
@@ -354,25 +451,26 @@ if user.nil?
       puts "Password cannot be blank."
       next
     end
-
     print "Confirm master password: "
     password_confirm = gets.chomp
-
     if password != password_confirm
       puts "Passwords do not match. Try again."
       next
     end
 
-    # Attempt to create the user; handle unlikely race where email became taken between check and insert
     begin
-      user = create_user(db, email, password)
-      # Ensure failed_attempts and locked_until are initialized
+      user_and_token = create_user(db, email, password)
+      user = user_and_token[0]
+      recovery_token = user_and_token[1]
+      # initialize failed_attempts/locked_until
       db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", [user['id']])
-      puts "Account created. You are logged in."
+      puts "Account created. IMPORTANT: Save this recovery token in a secure place (shown only once):"
+      puts recovery_token
+      puts "You can use this token to recover your account if you forget your master password."
+      created = true
       break
     rescue SQLite3::ConstraintException
-      puts "That email was registered just now by another process. Please choose a different email."
-      # prompt for a new email before continuing
+      puts "That email was registered just now. Please choose a different email."
       loop do
         print "Enter a different email: "
         email = gets.chomp.strip.downcase
@@ -384,7 +482,6 @@ if user.nil?
         user = existing
         break
       else
-        # try creation again in outer loop
         next
       end
     end
@@ -394,8 +491,23 @@ else
   loop do
     print "Enter master password: "
     password = gets.chomp
-
     if verify_password(user['password_hash'], password)
+      # normal login: derive master_key and decrypt edk_master to get data_key
+      if user['enc_salt'] && user['edk_master']
+        master_salt = unb64(user['enc_salt'])
+        master_key = derive_key(password, master_salt)
+        data_key = decrypt_aes_gcm_binary(user['edk_master'], user['edk_master_iv'], user['edk_master_tag'], master_key)
+        if data_key.nil?
+          # possible corruption or wrong key — fallback: attempt to treat master_key itself as data_key (old behavior)
+          # but for simplicity, treat as login failure
+          puts "Login failed to derive encryption key. Possible data corruption."
+          exit
+        end
+      else
+        puts "Account missing encryption metadata. Cannot continue."
+        exit
+      end
+
       # Successful login: reset failed attempts & locked_until
       db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", [user['id']])
       puts "Login successful. Welcome back!"
@@ -404,13 +516,12 @@ else
       # Failed attempt: increment counter
       fa = (user['failed_attempts'] || 0).to_i + 1
       if fa >= MAX_ATTEMPTS
-        lock_until_time = DateTime.now + Rational(LOCKOUT_MINUTES, 24 * 60) # add minutes
+        lock_until_time = DateTime.now + Rational(LOCKOUT_MINUTES, 24 * 60)
         db.execute("UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?", [fa, lock_until_time.to_s, user['id']])
         puts "Too many failed attempts. Account locked for #{LOCKOUT_MINUTES} minutes."
         exit
       else
         db.execute("UPDATE users SET failed_attempts = ? WHERE id = ?", [fa, user['id']])
-        # refresh user row so failed_attempts increments persist in loop
         user = find_user(db, email)
         remaining = MAX_ATTEMPTS - fa
         puts "Incorrect password. #{remaining} attempt(s) remaining before lockout."
@@ -427,43 +538,48 @@ else
   end
 end
 
+# At this point we must ensure we have the session's data_key variable.
+# Cases:
+# - New user: create_user returned user and we generated data_key inside create_user but didn't keep it in variable here.
+#   For new user, re-derive data_key by decrypting edk_master using the password just set.
+# - Existing user: 'data_key' computed in login path.
 
-# Ensure enc_salt exists: if missing, generate and save (backwards compat)
-salt_b64 = user['enc_salt']
-if salt_b64.nil? || salt_b64.empty?
-  new_salt = generate_salt
-  salt_b64 = b64(new_salt)
-  db.execute("UPDATE users SET enc_salt = ? WHERE id = ?", [salt_b64, user['id']])
-  salt = new_salt
-else
-  salt = unb64(salt_b64)
+# If data_key is not set (new user path), derive now
+if defined?(data_key).nil? || data_key.nil?
+  # decrypt edk_master with master password
+  user = find_user(db, email) if user.nil?
+  master_salt = unb64(user['enc_salt'])
+  master_key = derive_key(password, master_salt)
+  data_key = decrypt_aes_gcm_binary(user['edk_master'], user['edk_master_iv'], user['edk_master_tag'], master_key)
+  if data_key.nil?
+    puts "Failed to obtain data encryption key for session. Exiting."
+    exit
+  end
 end
 
-if salt.nil?
-  puts "Failed to obtain encryption salt. Exiting."
-  exit
-end
-
-key = derive_key(password, salt)
-
-# --- Main menu loop ---
+# --- Main menu loop (adds regenerate recovery token option) ---
 loop do
   puts "\nMenu:"
   puts "1) Add new site credential"
   puts "2) List saved credentials (choose a category; passwords shown inline)"
   puts "3) Delete a credential by ID"
-  puts "4) Logout / Exit"
+  puts "4) Regenerate recovery token (prints new token; store it securely)"
+  puts "5) Logout / Exit"
   print "Choose: "
   choice = gets.chomp
 
   case choice
   when '1'
-    add_credential(db, user['id'], key)
+    add_credential(db, user['id'], data_key)
   when '2'
-    list_credentials_by_category(db, user['id'], key)
+    list_credentials_by_category(db, user['id'], data_key)
   when '3'
     delete_credential(db, user['id'])
   when '4'
+    new_token = regenerate_recovery_token(db, user['id'], data_key)
+    puts "New recovery token (shown once) — store securely:"
+    puts new_token
+  when '5'
     puts "Goodbye."
     break
   else
