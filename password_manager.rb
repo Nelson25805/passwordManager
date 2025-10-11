@@ -262,23 +262,39 @@ end
 puts "=== Welcome to Password Manager ==="
 
 email = ''
+user = nil
 loop do
   print "Enter your email: "
   email = gets.chomp.strip.downcase
   if email.empty?
     puts "Email cannot be blank. Please enter a valid email."
+    next
+  end
+
+  user = find_user(db, email)
+  if user
+    # Email exists — ask if they want to log in or use a different email
+    puts "An account with that email already exists."
+    print "Do you want to log in with this email? (y/N): "
+    answer = gets.chomp.strip.downcase
+    if answer == 'y' || answer == 'yes'
+      break
+    else
+      # Let them enter a different email
+      next
+    end
   else
+    # Email does not exist — proceed to create account
     break
   end
 end
 
-user = find_user(db, email)
+# At this point, `email` is non-empty and `user` is either a DB row or nil.
+password = ''
 
 if user.nil?
+  # Create new account flow (enforce non-empty password + confirmation)
   puts "No account found. Let's create one!"
-
-  password = ''
-  password_confirm = ''
 
   loop do
     print "Enter master password (required): "
@@ -296,20 +312,52 @@ if user.nil?
       next
     end
 
-    break
+    # Attempt to create the user; handle unlikely race where email became taken between check and insert
+    begin
+      user = create_user(db, email, password)
+      puts "Account created. You are logged in."
+      break
+    rescue SQLite3::ConstraintException
+      puts "That email was registered just now by another process. Please choose a different email."
+      # prompt for a new email before continuing
+      loop do
+        print "Enter a different email: "
+        email = gets.chomp.strip.downcase
+        break unless email.empty?
+        puts "Email cannot be blank."
+      end
+      existing = find_user(db, email)
+      if existing
+        user = existing
+        break
+      else
+        # Try creation again in outer loop
+        next
+      end
+    end
   end
-
-  user = create_user(db, email, password)
-  puts "Account created. You are logged in."
 else
-  print "Enter master password: "
-  password = gets.chomp
-  if !verify_password(user['password_hash'], password)
-    puts "Incorrect password. Exiting..."
-    exit
+  # Existing-user login flow
+  loop do
+    print "Enter master password: "
+    password = gets.chomp
+    if verify_password(user['password_hash'], password)
+      puts "Login successful. Welcome back!"
+      break
+    else
+      puts "Incorrect password."
+      print "Try again? (y/N): "
+      again = gets.chomp.strip.downcase
+      if again == 'y' || again == 'yes'
+        next
+      else
+        puts "Exiting..."
+        exit
+      end
+    end
   end
-  puts "Login successful. Welcome back!"
 end
+
 
 
 # Ensure enc_salt exists: if missing, generate and save (backwards compat)
