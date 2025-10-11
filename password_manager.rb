@@ -258,29 +258,81 @@ def delete_credential(db, user_id)
   end
 end
 
-# --- Login / Signup flow ---
+# --- Login / Signup flow (with email validation + rate-limiting/lockout) ---
+# Ensure the users table has columns for failed_attempts and locked_until (backwards-compatible)
+begin
+  db.execute("ALTER TABLE users ADD COLUMN failed_attempts INTEGER DEFAULT 0")
+rescue SQLite3::SQLException
+  # column probably already exists; ignore
+end
+
+begin
+  db.execute("ALTER TABLE users ADD COLUMN locked_until TEXT DEFAULT NULL")
+rescue SQLite3::SQLException
+  # column probably already exists; ignore
+end
+
 puts "=== Welcome to Password Manager ==="
+
+EMAIL_REGEX = /\A[^@\s]+@[^@\s]+\.[^@\s]+\z/
+MAX_ATTEMPTS = 5         # number of allowed failed attempts before lockout
+LOCKOUT_MINUTES = 15     # minutes to lock account after too many failures
 
 email = ''
 user = nil
 loop do
-  print "Enter your email: "
-  email = gets.chomp.strip.downcase
-  if email.empty?
-    puts "Email cannot be blank. Please enter a valid email."
-    next
+  # Email input + validation (non-empty + format)
+  loop do
+    print "Enter your email: "
+    email = gets.chomp.strip.downcase
+    if email.empty?
+      puts "Email cannot be blank. Please enter a valid email."
+      next
+    end
+    unless email.match?(EMAIL_REGEX)
+      puts "That doesn't look like a valid email address. Try again."
+      next
+    end
+    break
   end
 
   user = find_user(db, email)
   if user
+    # Check lockout
+    if user['locked_until'] && !user['locked_until'].strip.empty?
+      begin
+        locked_until_time = DateTime.parse(user['locked_until'])
+        if locked_until_time > DateTime.now
+          remaining = ((locked_until_time - DateTime.now) * 24 * 60).to_i
+          puts "This account is locked due to too many failed attempts. Try again in ~#{remaining} minutes."
+          print "Do you want to enter a different email? (y/N): "
+          alt = gets.chomp.strip.downcase
+          if alt == 'y' || alt == 'yes'
+            next
+          else
+            puts "Exiting..."
+            exit
+          end
+        else
+          # lock expired -> reset failed_attempts and locked_until
+          db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", [user['id']])
+          user = find_user(db, email) # refresh
+        end
+      rescue ArgumentError
+        # If parsing fails, clear the locked_until to be safe
+        db.execute("UPDATE users SET locked_until = NULL WHERE id = ?", [user['id']])
+        user = find_user(db, email)
+      end
+    end
+
     # Email exists — ask if they want to log in or use a different email
-    puts "An account with that email already exists."
+    puts "An account with that email exists."
     print "Do you want to log in with this email? (y/N): "
     answer = gets.chomp.strip.downcase
     if answer == 'y' || answer == 'yes'
       break
     else
-      # Let them enter a different email
+      # let them enter a different email
       next
     end
   else
@@ -289,7 +341,6 @@ loop do
   end
 end
 
-# At this point, `email` is non-empty and `user` is either a DB row or nil.
 password = ''
 
 if user.nil?
@@ -315,6 +366,8 @@ if user.nil?
     # Attempt to create the user; handle unlikely race where email became taken between check and insert
     begin
       user = create_user(db, email, password)
+      # Ensure failed_attempts and locked_until are initialized
+      db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", [user['id']])
       puts "Account created. You are logged in."
       break
     rescue SQLite3::ConstraintException
@@ -331,33 +384,48 @@ if user.nil?
         user = existing
         break
       else
-        # Try creation again in outer loop
+        # try creation again in outer loop
         next
       end
     end
   end
 else
-  # Existing-user login flow
+  # Existing-user login flow with rate-limiting
   loop do
     print "Enter master password: "
     password = gets.chomp
+
     if verify_password(user['password_hash'], password)
+      # Successful login: reset failed attempts & locked_until
+      db.execute("UPDATE users SET failed_attempts = 0, locked_until = NULL WHERE id = ?", [user['id']])
       puts "Login successful. Welcome back!"
       break
     else
-      puts "Incorrect password."
-      print "Try again? (y/N): "
-      again = gets.chomp.strip.downcase
-      if again == 'y' || again == 'yes'
-        next
-      else
-        puts "Exiting..."
+      # Failed attempt: increment counter
+      fa = (user['failed_attempts'] || 0).to_i + 1
+      if fa >= MAX_ATTEMPTS
+        lock_until_time = DateTime.now + Rational(LOCKOUT_MINUTES, 24 * 60) # add minutes
+        db.execute("UPDATE users SET failed_attempts = ?, locked_until = ? WHERE id = ?", [fa, lock_until_time.to_s, user['id']])
+        puts "Too many failed attempts. Account locked for #{LOCKOUT_MINUTES} minutes."
         exit
+      else
+        db.execute("UPDATE users SET failed_attempts = ? WHERE id = ?", [fa, user['id']])
+        # refresh user row so failed_attempts increments persist in loop
+        user = find_user(db, email)
+        remaining = MAX_ATTEMPTS - fa
+        puts "Incorrect password. #{remaining} attempt(s) remaining before lockout."
+        print "Try again? (y/N): "
+        again = gets.chomp.strip.downcase
+        if again == 'y' || again == 'yes'
+          next
+        else
+          puts "Exiting..."
+          exit
+        end
       end
     end
   end
 end
-
 
 
 # Ensure enc_salt exists: if missing, generate and save (backwards compat)
