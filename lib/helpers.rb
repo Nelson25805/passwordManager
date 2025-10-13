@@ -77,6 +77,21 @@ def show_token_dialog(parent_window, token, title: "Recovery Token")
   dlg.destroy
 end
 
+# Asks the user a yes/no question. Returns true if they clicked "Yes".
+  def confirm(parent, message, title: "Confirm")
+  dlg = Gtk::MessageDialog.new(
+    parent: parent,
+    flags: :modal,
+    type: :question,
+    buttons: :yes_no,
+    message: message,
+    title: title
+  )
+  resp = dlg.run
+  dlg.destroy
+  resp == Gtk::ResponseType::YES
+  end
+
 
   def show_info(parent, message)
     dialog = Gtk::MessageDialog.new(parent: parent, flags: :modal, type: :info, buttons: :ok, message: message)

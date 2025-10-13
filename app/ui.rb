@@ -108,15 +108,26 @@ class PasswordManagerUI
   end
 
   def delete_selected
-    selection = @tree_view.selection.selected
-    if selection.nil?
-      Helpers.show_info(@window, "Select an item first")
-      return
-    end
-    id = selection[0].to_i
+  selection = @tree_view.selection.selected
+  if selection.nil?
+    Helpers.show_info(@window, "Select an item first")
+    return
+  end
+
+  id = selection[0].to_i
+  site = selection[2] || "[unknown site]"
+
+  # Confirm deletion with the user including the site name
+  msg = "Are you sure you'd like to delete '#{site}' password?"
+  if Helpers.confirm(@window, msg, title: "Confirm Delete")
     Credential.delete(id, $session[:user].row['id'])
     refresh_list
+    Helpers.show_info(@window, "Deleted '#{site}'")
+  else
+    # user canceled — do nothing
   end
+end
+
 
   def regenerate_token
     token = $session[:user].regenerate_recovery_token!($session[:data_key])
