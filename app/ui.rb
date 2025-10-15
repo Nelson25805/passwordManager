@@ -57,6 +57,11 @@ class PasswordManagerUI
     add_btn.signal_connect('clicked') { open_add_window }
     button_box.pack_start(add_btn, expand: false, fill: false, padding: 6)
 
+    # NEW: Edit button
+    edit_btn = Gtk::Button.new(label: 'Edit')
+    edit_btn.signal_connect('clicked') { open_edit_window }
+    button_box.pack_start(edit_btn, expand: false, fill: false, padding: 6)
+
     delete_btn = Gtk::Button.new(label: 'Delete')
     delete_btn.signal_connect('clicked') { delete_selected }
     button_box.pack_start(delete_btn, expand: false, fill: false, padding: 6)
@@ -119,6 +124,24 @@ class PasswordManagerUI
     AddCredentialWindow.new($session[:user].row['id'], $session[:data_key], self)
   end
 
+  # NEW: open edit window for the selected row
+  def open_edit_window
+    selection = @tree_view.selection.selected
+    if selection.nil?
+      Helpers.show_info(@window, 'Select an item first')
+      return
+    end
+
+    id   = selection[0].to_i
+    cat  = selection[1]
+    site = selection[2]
+    uname = selection[3]
+    pw = selection[4]
+
+    # <-- FIXED: use $session[:data_key] (no stray quote)
+    EditCredentialWindow.new($session[:user].row['id'], $session[:data_key], self, id, cat, site, uname, pw)
+  end
+
   def delete_selected
     selection = @tree_view.selection.selected
     if selection.nil?
@@ -131,13 +154,11 @@ class PasswordManagerUI
 
     # Confirm deletion with the user including the site name
     msg = "Are you sure you'd like to delete '#{site}' password?"
-    if Helpers.confirm(@window, msg, title: 'Confirm Delete')
-      Credential.delete(id, $session[:user].row['id'])
-      refresh_list
-      Helpers.show_info(@window, "Deleted '#{site}'")
-    else
-      # user canceled — do nothing
-    end
+    return unless Helpers.confirm(@window, msg, title: 'Confirm Delete')
+
+    Credential.delete(id, $session[:user].row['id'])
+    refresh_list
+    Helpers.show_info(@window, "Deleted '#{site}'")
   end
 
   def regenerate_token
@@ -150,6 +171,7 @@ class PasswordManagerUI
   end
 end
 
+# Add / Edit Credential window (shared UI)
 class AddCredentialWindow
   def initialize(user_id, data_key, main_ui)
     @user_id = user_id
@@ -202,6 +224,70 @@ class AddCredentialWindow
     end
 
     Credential.create(@user_id, cat, site, uname, pw, @data_key)
+    @main_ui.refresh_categories
+    @main_ui.refresh_list
+    @window.destroy
+  end
+end
+
+# Edit window — prefilled, updates existing record
+class EditCredentialWindow
+  def initialize(user_id, data_key, main_ui, id, category, site, username, password)
+    @user_id = user_id
+    @data_key = data_key
+    @main_ui = main_ui
+    @cred_id = id
+
+    @window = Gtk::Window.new('Edit Credential')
+    @window.set_default_size(420, 260)
+
+    grid = Gtk::Grid.new
+    grid.set_row_spacing(6)
+    grid.set_column_spacing(6)
+    grid.margin = 12
+    @window.add(grid)
+
+    Gtk::Label.new('Category (optional)').tap { |l| grid.attach(l, 0, 0, 1, 1) }
+    @cat_entry = Gtk::Entry.new
+    @cat_entry.text = category || ''
+    grid.attach(@cat_entry, 1, 0, 1, 1)
+
+    Gtk::Label.new('Site (required)').tap { |l| grid.attach(l, 0, 1, 1, 1) }
+    @site_entry = Gtk::Entry.new
+    @site_entry.text = site
+    grid.attach(@site_entry, 1, 1, 1, 1)
+
+    Gtk::Label.new('Username (required)').tap { |l| grid.attach(l, 0, 2, 1, 1) }
+    @uname_entry = Gtk::Entry.new
+    @uname_entry.text = username
+    grid.attach(@uname_entry, 1, 2, 1, 1)
+
+    Gtk::Label.new('Password (required)').tap { |l| grid.attach(l, 0, 3, 1, 1) }
+    @pw_entry = Gtk::Entry.new
+    @pw_entry.visibility = false
+    @pw_entry.text = password || ''
+    grid.attach(@pw_entry, 1, 3, 1, 1)
+
+    save_button = Gtk::Button.new(label: 'Save Changes')
+    save_button.signal_connect('clicked') { save_and_close }
+    grid.attach(save_button, 1, 4, 1, 1)
+
+    @window.show_all
+  end
+
+  def save_and_close
+    cat = @cat_entry.text.strip
+    cat = nil if cat.empty?
+    site = @site_entry.text.strip
+    uname = @uname_entry.text.strip
+    pw = @pw_entry.text.strip
+
+    if site.empty? || uname.empty? || pw.empty?
+      Helpers.show_error(@window, 'Site, username, and password are required')
+      return
+    end
+
+    Credential.update(@cred_id, @user_id, cat, site, uname, pw, @data_key)
     @main_ui.refresh_categories
     @main_ui.refresh_list
     @window.destroy
