@@ -223,7 +223,20 @@ class AddCredentialWindow
       return
     end
 
-    Credential.create(@user_id, cat, site, uname, pw, @data_key)
+    # Check duplicate site before creating
+    if Credential.exists_for_site?($session[:user].row['id'], site)
+      Helpers.show_error(@window,
+                         "A credential for '#{site}' already exists. Please edit or delete the existing record.")
+      return
+    end
+
+    begin
+      Credential.create(@user_id, cat, site, uname, pw, @data_key)
+    rescue StandardError => e
+      Helpers.show_error(@window, e.message)
+      return
+    end
+
     @main_ui.refresh_categories
     @main_ui.refresh_list
     @window.destroy
@@ -287,7 +300,20 @@ class EditCredentialWindow
       return
     end
 
-    Credential.update(@cred_id, @user_id, cat, site, uname, pw, @data_key)
+    # Check duplicate (excluding the current record)
+    if Credential.exists_for_site_excluding?($session[:user].row['id'], site, @cred_id)
+      Helpers.show_error(@window,
+                         "Another credential for '#{site}' already exists. Please edit that entry or choose a different site.")
+      return
+    end
+
+    begin
+      Credential.update(@cred_id, @user_id, cat, site, uname, pw, @data_key)
+    rescue StandardError => e
+      Helpers.show_error(@window, e.message)
+      return
+    end
+
     @main_ui.refresh_categories
     @main_ui.refresh_list
     @window.destroy
