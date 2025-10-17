@@ -7,7 +7,7 @@ require_relative '../lib/helpers'
 class PasswordManagerUI
   def initialize
     @window = Gtk::Window.new('Password Manager')
-    @window.set_default_size(800, 480)
+    @window.set_default_size(900, 480)
     @window.signal_connect('destroy') { Gtk.main_quit }
 
     vbox = Gtk::Box.new(:vertical, 6)
@@ -29,16 +29,26 @@ class PasswordManagerUI
     end
     top_box.pack_start(refresh_cats_btn, expand: false, fill: false, padding: 6)
 
-    # List store and tree view: keep ID in the model (col 0) but DON'T show it
-    # Columns: 0=id, 1=category, 2=site, 3=username, 4=password
-    @list_store = Gtk::ListStore.new(String, String, String, String, String)
+    # model columns:
+    # 0 = id (hidden)
+    # 1 = category (visible)
+    # 2 = site (visible)
+    # 3 = username (visible)
+    # 4 = password_display (visible)  <-- masked or real depending on per-row flag
+    # 5 = password_real (hidden)       <-- stores the real decrypted password
+    # 6 = action_text (visible)        <-- "Show" / "Hide" clickable action
+    @list_store = Gtk::ListStore.new(String, String, String, String, String, String, String)
     @tree_view = Gtk::TreeView.new(@list_store)
 
-    # Visible columns: Category (1), Site (2), Username (3), Password (4)
-    visible_headers = %w[Category Site Username Password]
-    visible_indices = [1, 2, 3, 4]
+    # Visible columns: Category (1), Site (2), Username (3), Password (4), Action (6)
+    visible_headers = ['Category', 'Site', 'Username', 'Password', 'Show / Hide Password']
+    visible_indices = [1, 2, 3, 4, 6]
     visible_headers.each_with_index do |title, idx|
       renderer = Gtk::CellRendererText.new
+      if idx == visible_headers.length - 1
+        # Action column style: look like a button by using markup or making it bold
+        renderer.mode = :activatable
+      end
       column = Gtk::TreeViewColumn.new(title, renderer, text: visible_indices[idx])
       column.resizable = true
       @tree_view.append_column(column)
@@ -57,7 +67,6 @@ class PasswordManagerUI
     add_btn.signal_connect('clicked') { open_add_window }
     button_box.pack_start(add_btn, expand: false, fill: false, padding: 6)
 
-    # NEW: Edit button
     edit_btn = Gtk::Button.new(label: 'Edit')
     edit_btn.signal_connect('clicked') { open_edit_window }
     button_box.pack_start(edit_btn, expand: false, fill: false, padding: 6)
@@ -69,6 +78,45 @@ class PasswordManagerUI
     regen_btn = Gtk::Button.new(label: 'Regenerate Recovery Token')
     regen_btn.signal_connect('clicked') { regenerate_token }
     button_box.pack_start(regen_btn, expand: false, fill: false, padding: 6)
+
+    # State: per-row show/hide flags (credential id => boolean)
+    @row_shown = {}
+
+    # Handle clicks on the TreeView to detect when the Action column is clicked
+    @tree_view.signal_connect('button-press-event') do |tv, event|
+      # only handle left-clicks
+      if event.event_type == Gdk::EventType::BUTTON_PRESS && event.button == 1
+        at = tv.get_path_at_pos(event.x.to_i, event.y.to_i)
+        if at # returns [path, column, cell_x, cell_y]
+          path, column, = at
+          col_index = tv.columns.index(column)
+          # action column is the last visible index (6 in model)
+          # find index of the column object to compare
+          if col_index && tv.columns[col_index] && tv.columns[col_index].title == 'Show / Hide Password'
+            iter = @list_store.get_iter(path)
+            id = iter[0].to_i
+            # toggle flag
+            @row_shown[id] = !@row_shown.fetch(id, false)
+            # update displayed password and action label
+            real_pw = iter[5] # password_real
+            if @row_shown[id]
+              iter[4] = real_pw || '[unable to decrypt]'
+              iter[6] = 'Hide Password'
+            else
+              iter[4] = real_pw ? '********' : '[unable to decrypt]'
+              iter[6] = 'Show Password'
+            end
+            true
+          else
+            false
+          end
+        else
+          false
+        end
+      else
+        false
+      end
+    end
 
     refresh_categories
     refresh_list
@@ -116,7 +164,16 @@ class PasswordManagerUI
       iter[1] = c[:category] || ''
       iter[2] = c[:site]
       iter[3] = c[:username]
-      iter[4] = c[:password] || '[unable to decrypt]'
+      # store the real password in a hidden column (5)
+      iter[5] = c[:password] || nil
+      # determine whether this row is currently shown
+      shown = @row_shown.fetch(c[:id], false)
+      iter[4] = if shown
+                  c[:password] || '[unable to decrypt]'
+                else
+                  c[:password] ? '********' : '[unable to decrypt]'
+                end
+      iter[6] = shown ? 'Hide Password' : 'Show Password'
     end
   end
 
@@ -124,7 +181,6 @@ class PasswordManagerUI
     AddCredentialWindow.new($session[:user].row['id'], $session[:data_key], self)
   end
 
-  # NEW: open edit window for the selected row
   def open_edit_window
     selection = @tree_view.selection.selected
     if selection.nil?
@@ -132,14 +188,19 @@ class PasswordManagerUI
       return
     end
 
-    id   = selection[0].to_i
-    cat  = selection[1]
-    site = selection[2]
-    uname = selection[3]
-    pw = selection[4]
+    id = selection[0].to_i
 
-    # <-- FIXED: use $session[:data_key] (no stray quote)
-    EditCredentialWindow.new($session[:user].row['id'], $session[:data_key], self, id, cat, site, uname, pw)
+    # Fetch the real credential by id so we always get the decrypted password,
+    # even if the list shows masked values.
+    creds = Credential.for_user($session[:user].row['id'], $session[:data_key])
+    cred = creds.find { |r| r[:id] == id }
+    unless cred
+      Helpers.show_error(@window, 'Could not find the selected credential')
+      return
+    end
+
+    EditCredentialWindow.new($session[:user].row['id'], $session[:data_key], self, cred[:id], cred[:category],
+                             cred[:site], cred[:username], cred[:password])
   end
 
   def delete_selected
@@ -171,7 +232,7 @@ class PasswordManagerUI
   end
 end
 
-# Add / Edit Credential window (shared UI)
+# ---------- AddCredentialWindow (unchanged) ----------
 class AddCredentialWindow
   def initialize(user_id, data_key, main_ui)
     @user_id = user_id
@@ -243,7 +304,7 @@ class AddCredentialWindow
   end
 end
 
-# Edit window — prefilled, updates existing record
+# ---------- EditCredentialWindow (unchanged) ----------
 class EditCredentialWindow
   def initialize(user_id, data_key, main_ui, id, category, site, username, password)
     @user_id = user_id
