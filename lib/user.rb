@@ -1,4 +1,3 @@
-# lib/user.rb
 require 'bcrypt'
 require 'securerandom'
 require 'date'

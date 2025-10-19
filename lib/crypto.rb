@@ -1,4 +1,3 @@
-# lib/crypto.rb
 require 'openssl'
 require 'securerandom'
 require 'base64'

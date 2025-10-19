@@ -1,4 +1,3 @@
-# lib/database.rb
 require 'sqlite3'
 require 'date'
 
