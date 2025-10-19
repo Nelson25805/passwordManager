@@ -1,4 +1,3 @@
-# app/ui.rb
 require 'gtk3'
 require_relative '../lib/credential'
 require_relative '../lib/user'

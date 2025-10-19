@@ -1,4 +1,3 @@
-# lib/helpers.rb
 require 'gtk3'
 
 module Helpers

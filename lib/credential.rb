@@ -1,4 +1,3 @@
-# lib/credential.rb
 require_relative 'database'
 require_relative 'crypto'
 require 'date'
