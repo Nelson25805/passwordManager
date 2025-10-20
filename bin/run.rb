@@ -1,3 +1,5 @@
+# TO RUN: ruby bin/run.rb
+
 require 'gtk3'
 require_relative '../lib/database'   # ensures DB and migrations exist
 require_relative '../lib/helpers'
