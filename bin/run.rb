@@ -1,11 +1,11 @@
 # TO RUN: ruby bin/run.rb
 
 require 'gtk3'
-require_relative '../lib/database'   # ensures DB and migrations exist
+require_relative '../lib/database'  
 require_relative '../lib/helpers'
 require_relative '../lib/user'
 require_relative '../lib/credential'
-require_relative '../app/ui'         # PasswordManagerUI
+require_relative '../app/ui'        
 require 'securerandom'
 
 # Ensure DB is initialized
@@ -16,8 +16,6 @@ class LoginWindow
   def initialize
     @window = Gtk::Window.new("Password Manager Login")
     @window.set_default_size(400, 200)
-    # Do NOT call Gtk.main_quit here — closing login shouldn't quit the whole app
-    # @window.signal_connect("destroy") { @window.destroy }
 
     grid = Gtk::Grid.new
     grid.set_row_spacing(6)
