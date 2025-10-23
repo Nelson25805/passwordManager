@@ -231,7 +231,7 @@ class PasswordManagerUI
   end
 end
 
-# ---------- AddCredentialWindow (unchanged) ----------
+# ---------- AddCredentialWindow ----------
 class AddCredentialWindow
   def initialize(user_id, data_key, main_ui)
     @user_id = user_id
@@ -303,7 +303,7 @@ class AddCredentialWindow
   end
 end
 
-# ---------- EditCredentialWindow (unchanged) ----------
+# ---------- EditCredentialWindow ----------
 class EditCredentialWindow
   def initialize(user_id, data_key, main_ui, id, category, site, username, password)
     @user_id = user_id
