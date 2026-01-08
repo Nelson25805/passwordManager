@@ -22,7 +22,7 @@
     <img src="GithubImages/logo.png" alt="Logo" width="200" height="200">
   </a>
 
-<h3 align="center">IGDB Game Searcher</h3>
+<h3 align="center">Password Manager</h3>
 
 
   <p align="center">
