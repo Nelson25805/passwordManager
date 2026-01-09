@@ -26,7 +26,7 @@
 
 
   <p align="center">
-    An application to search for games using the IGDB API.
+    An application to manage your passwords for anything you need.
     <br />
     <a href="https://github.com/Nelson25805/igdbGameInfo"><strong>Explore the docs »</strong></a>
     <br />
