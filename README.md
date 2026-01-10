@@ -69,12 +69,16 @@
 
 ![Project Name Screen Shot][project-screenshot]
 
-IGDB Game Searcher is a desktop application that allows you to search for games using the IGDB API. You have two primary search modes:
-- **Filtered Search Page:** Look up games by title and filter by genre.
-- **Random Search Page:** Fetch a random game from the IGDB database.
+The **Ruby Password Manager** is a local password management application designed to securely store, retrieve, and manage login credentials.
 
-The project is built using Python and PyQt5, with a polished dark theme (via qdarkstyle) and a custom external stylesheet for UI sizing and spacing.
+### Core Features
+- 🔐 Securely store passwords using encryption
+- 🗝️ Master password authentication
+- ➕ Add, update, and delete credentials
+- 🔍 Search saved accounts by name or service
+- 💾 Local encrypted storage (no cloud dependency)
 
+This project is intended for educational purposes and personal use, focusing on clean Ruby design and fundamental security concepts.
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
