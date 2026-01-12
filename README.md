@@ -71,12 +71,12 @@
 
 The **Ruby Password Manager** is a local password management application designed to securely store, retrieve, and manage login credentials.
 
-### Core Features
-- 🔐 Securely store passwords using encryption
-- 🗝️ Master password authentication
-- ➕ Add, update, and delete credentials
-- 🔍 Search saved accounts by name or service
-- 💾 Local encrypted storage (no cloud dependency)
+### Key features
+- 🔐 Local encrypted credential storage (no cloud sync).
+- 🗝️ Master password backed authentication.
+- 🔍 Per-user encrypted data key (EDK) used to encrypt credentials.
+- 💾 One-time recovery token (shown on account creation / regeneration) to recover data if the master password is lost.
+- ➕ Add / Edit / Delete credentials.
 
 This project is intended for educational purposes and personal use, focusing on clean Ruby design and fundamental security concepts.
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
