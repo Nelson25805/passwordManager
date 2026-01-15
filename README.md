@@ -86,6 +86,11 @@ This project is intended for educational purposes and personal use, focusing on 
 
 | Badge | Description |
 |:-----:|-------------|
+Ruby
+GTK3
+SQLite3
+OpenSSL
+bcrypt
 | [![Python](GithubImages/pythonShield.svg)][Python-url] | Core programming language. |
 | [![PyQt5](GithubImages/pyqt5Shield.svg)][PyQt5-url] | User interface built with PyQt5. |
 | [![qdarkstyle](GithubImages/qDarkStyleShield.svg)][qdarkstyle-url] | Polished dark theme support via qdarkstyle. |
