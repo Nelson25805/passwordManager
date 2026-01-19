@@ -86,11 +86,11 @@ This project is intended for educational purposes and personal use, focusing on 
 
 | Badge | Description |
 |:-----:|-------------|
-| [![Python](GithubImages/pythonShield.svg)][Python-url] | Core programming language. |
-| [![PyQt5](GithubImages/pyqt5Shield.svg)][PyQt5-url] | User interface built with PyQt5. |
-| [![qdarkstyle](GithubImages/qDarkStyleShield.svg)][qdarkstyle-url] | Polished dark theme support via qdarkstyle. |
-| [![IGDB API](GithubImages/igdbApiShield.svg)][igdb-api-url] | Retrieves game data from the IGDB API. |
-| [![Pandas](GithubImages/pandasShield.svg)][pandas-url] | Data analysis and manipulation with Pandas. |
+| [![Ruby](GithubImages/rubyShield.svg)][Ruby-url] | Core programming language. |
+| [![GTK3](GithubImages/gTK3Shield.svg)][GTK3-url] | Desktop GUI toolkit. |
+| [![SQLite3](GithubImages/sQLite3Shield.svg)][SQLite3-url] | SQL database storage system for data. |
+| [![OpenSSL](GithubImages/openSSLShield.svg)][OpenSSL-url] | Encryption/decryption cryptography used. |
+| [![bcrypt](GithubImages/bcryptShield.svg)][bcrypt-url] | Password hashing library. |
 
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -234,20 +234,15 @@ Project Link: [https://github.com/Nelson25805/igdbGameInfo](https://github.com/N
 [project-screenshot5]: GithubImages/envExample.png
 
 
-[Python-url]: https://www.python.org/downloads/
-[PyQt5-url]: https://pypi.org/project/PyQt5/
-[qdarkstyle-url]: https://pypi.org/project/QDarkStyle/
-[igdb-api-url]: https://api-docs.igdb.com/
-[pandas-url]: https://pandas.pydata.org/
+[Ruby-url]: https://www.ruby-lang.org/en/downloads/
+[GTK3-url]: https://www.gtk.org/
+[SQLite3-url]: https://www.sqlite.org/download.html
+[OpenSSL-url]: https://openssl-library.org/source/
+[Bcrypt-url]: https://rubygems.org/gems/bcrypt/versions/3.1.12?locale=en
 
 [Python]: https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54
-[Python-url]: https://www.python.org/downloads/
 [Tkinter]: https://img.shields.io/badge/Tkinter-8.6-green
-[Tkinter-url]: https://docs.python.org/3/library/tkinter.html
-
-
 [JQuery.com]: https://img.shields.io/badge/jQuery-0769AD?style=for-the-badge&logo=jquery&logoColor=white
-[JQuery-url]: https://jquery.com 
 
 
 
