@@ -142,7 +142,7 @@ To start, you have two options of using this software.
 ## Filtered Game Search:
 ![Project Name Screen Shot][project-screenshot2]
 
-This page allows you to search for games with the selected filters, and afterwards save results to a coresponding excel file.
+This page allows you to save, view, and edit passwords.
 
 
 ## Random Game Search:
