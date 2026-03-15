@@ -28,7 +28,7 @@
   <p align="center">
     An application to manage your passwords for anything you need.
     <br />
-    <a href="https://github.com/Nelson25805/igdbGameInfo"><strong>Explore the docs »</strong></a>
+    <a href="https://github.com/Nelson25805/passwordManager"><strong>Explore the docs »</strong></a>
     <br />
     <br />
     <a href="https://github.com/Nelson25805/igdbGameInfo">View Demo</a>
