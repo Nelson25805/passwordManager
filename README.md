@@ -18,7 +18,7 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/Nelson25805/igdbGameInfo">
+  <a href="https://github.com/Nelson25805/passwordManager">
     <img src="GithubImages/logo.png" alt="Logo" width="200" height="200">
   </a>
 
