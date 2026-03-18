@@ -1,3 +1,5 @@
+# user.rb - User model for password manager app
+
 require 'bcrypt'
 require 'securerandom'
 require 'date'
