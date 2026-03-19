@@ -1,3 +1,5 @@
+# helpers.rb - Utility functions for the password manager app
+
 require 'gtk3'
 
 module Helpers
