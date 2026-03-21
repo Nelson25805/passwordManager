@@ -220,7 +220,7 @@ Project Link: [https://github.com/Nelson25805/igdbGameInfo](https://github.com/N
 [issues-shield]: https://img.shields.io/github/issues/Nelson25805/igdbGameInfo.svg?style=for-the-badge
 [issues-url]: https://github.com/Nelson25805/igdbGameInfo/issues
 [license-shield]: https://img.shields.io/github/license/Nelson25805/igdbGameInfo.svg?style=for-the-badge
-[license-url]: https://github.com/Nelson25805/igdbGameInfo/blob/master/LICENSE.txt
+[license-url]: https://github.com/Nelson25805/passwordManager/blob/master/LICENSE.txt
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://www.linkedin.com/in/nelson-mcfadyen-806134133/
 
