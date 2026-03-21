@@ -35,7 +35,7 @@
     &middot;
     <a href="https://github.com/Nelson25805/passwordManager/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
     &middot;
-    <a href="https://github.com/Nelson25805/igdbGameInfo/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+    <a href="https://github.com/Nelson25805/passwordManager/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
   </p>
 </div>
 
