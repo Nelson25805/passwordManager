@@ -204,7 +204,7 @@ Distributed under the project_license. See `LICENSE.txt` for more information.
 
 Nelson McFadyen <!-- - [@twitter_handle](https://twitter.com/twitter_handle) --> - Nelson25805@hotmail.com
 
-Project Link: [https://github.com/Nelson25805/igdbGameInfo](https://github.com/Nelson25805/igdbGameInfo)
+Project Link: [https://github.com/Nelson25805/passwordManager](https://github.com/Nelson25805/passwordManager)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
