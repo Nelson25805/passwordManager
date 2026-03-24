@@ -1,3 +1,5 @@
+# crypto.rb - helper functions for encryption and decryption
+
 require 'openssl'
 require 'securerandom'
 require 'base64'
