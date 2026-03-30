@@ -217,7 +217,7 @@ Project Link: [https://github.com/Nelson25805/passwordManager](https://github.co
 [forks-url]: https://github.com/Nelson25805/passwordManager/network/members
 [stars-shield]: https://img.shields.io/github/stars/Nelson25805/passwordManager.svg?style=for-the-badge
 [stars-url]: https://github.com/Nelson25805/passwordManager/stargazers
-[issues-shield]: https://img.shields.io/github/issues/Nelson25805/ipasswordManager.svg?style=for-the-badge
+[issues-shield]: https://img.shields.io/github/issues/Nelson25805/passwordManager.svg?style=for-the-badge
 [issues-url]: https://github.com/Nelson25805/igdbGameInfo/issues
 [license-shield]: https://img.shields.io/github/license/Nelson25805/igdbGameInfo.svg?style=for-the-badge
 [license-url]: https://github.com/Nelson25805/passwordManager/blob/master/LICENSE.txt
