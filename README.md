@@ -186,7 +186,7 @@ Don't forget to give the project a star! Thanks again!
 
 ## Top contributors:
 
-<a href="https://github.com/Nelson25805/igdbGameInfo/graphs/contributors">
+<a href="https://github.com/Nelson25805/passwordManager/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=Nelson25805/igdbGameInfo" alt="contrib.rocks image" />
 </a>
 
