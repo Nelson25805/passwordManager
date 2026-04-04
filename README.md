@@ -163,7 +163,7 @@ This page allows you to search for a random game in the IGDB database, giving yo
 - [ ] Feature 3
     - [ ] Nested Feature
 
-See the [open issues](https://github.com/Nelson25805/igdbGameInfo/issues) for a full list of proposed features (and known issues).
+See the [open issues](https://github.com/Nelson25805/passwordManager/issues) for a full list of proposed features (and known issues).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 -->
